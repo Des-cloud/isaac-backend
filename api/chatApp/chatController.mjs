@@ -54,7 +54,6 @@ export default class ChatController {
       const page = req.query.page ? parseInt(req.query.page, 10) : 0;
       const limit = req.query.limit ? parseInt(req.query.limit, 10) : 30;
       const username = req.query.username;
-      console.log(username);
 
       const result = await ChatDAO.getChats({
         filter: { members: { $in: [username] } },
@@ -103,14 +102,13 @@ export default class ChatController {
         members: chatInfo.members,
         activeMembers: [],
         startTime: new Date(),
-        appointmentId: null,
       });
 
       if (!response.success) {
         throw new HttpInternalServerError(response.error);
       }
 
-      res.json({ success: true, id: response.id });
+      res.status(200).json(response.result);
     } catch (err) {
       console.error(`Failed to add a new chat. ${err}`);
       res.status(err.statusCode).json({ message: err.message });

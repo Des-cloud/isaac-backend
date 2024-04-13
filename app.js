@@ -7,9 +7,9 @@ import { Server } from "socket.io";
 import mongoose from "mongoose";
 import morgan from "morgan";
 
-import { notFound, errorHandler } from "./middlewares.mjs";
+import { errorHandler } from "./middlewares.mjs";
 import AppRouter from "./api/appRouter.mjs";
-import ChatInterface from "./api/chatApp/chatInterface.mjs";
+import MessageDAO from "./dao/messageDAO.mjs";
 
 dotenv.config();
 
@@ -78,8 +78,103 @@ const io = new Server(httpServer, {
 
 io.on("connection", (socket) => {
   console.log("A user is connected");
-  console.log(socket.id);
-  ChatInterface.register(io, socket);
+
+  socket.on("join", (chatId, callback) => {
+    console.log("Joining chat room", chatId, socket.id, callback, socket.rooms);
+    try {
+      socket.join(chatId);
+      socket.chatId = chatId;
+
+      console.log(
+        "Joined chat room",
+        chatId,
+        socket.id,
+        callback,
+        socket.rooms
+      );
+
+      const clients = io.sockets.adapter.rooms.get(chatId);
+      const numClients = clients ? clients.size : 0;
+      console.log(`Number of clients in room: ${numClients}`, clients, chatId);
+
+      callback({
+        status: "ok",
+      });
+    } catch (err) {
+      console.error(`Failed to join chat. ${err}`);
+    }
+  });
+
+  socket.on("leave", (chatId, callback) => {
+    console.log("Leaving chat room", chatId, socket.id, callback, socket.rooms);
+    try {
+      socket.leave(chatId);
+
+      console.log("Left room", chatId, socket.id, callback, socket.rooms);
+
+      callback({
+        status: "ok",
+      });
+    } catch (err) {
+      console.error(`Failed to leave chat. ${err}`);
+    }
+  });
+
+  // socket.on("disconnect", (reason) => {
+  //   console.log(`Client is diconnecting. ${reason}`);
+  // });
+
+  socket.on("disconnecting", (reason) => {
+    try {
+      console.log(
+        `Disconnecting from rooms. ${reason}`,
+        socket.rooms,
+        socket.chatId
+      );
+
+      for (const room of socket.rooms) {
+        if (room === socket.chatId) {
+          //socket.to(room).emit("user has left", socket.id);
+          socket.leave(socket.chatId);
+        }
+      }
+
+      console.log(
+        `Disconnected from rooms. ${reason}`,
+        socket.rooms,
+        socket.chatId
+      );
+    } catch (err) {
+      console.error(`Failed to leave room while disconnecting.`);
+    }
+  });
+
+  socket.on("chat", async (data) => {
+    console.log("Received chat message", data, socket.chatId, socket.rooms);
+    try {
+      const addResponse = await MessageDAO.addMessage({
+        chatId: data.chatId,
+        type: "user",
+        sender: data.sender,
+        timestamp: data.timestamp,
+        content: data.content,
+      });
+
+      console.log("Add response", addResponse);
+
+      if (!addResponse.success) {
+        throw new Error(`Failed to add message to DB. ${addResponse.error}`);
+      }
+
+      const message = await MessageDAO.getMessage(addResponse.id);
+
+      console.log("Message socket chatId", socket.chatId, socket.rooms);
+
+      io.in(socket.chatId).emit("chat", message);
+    } catch (err) {
+      console.error(`Failed to store message and resend it back to chat room.`);
+    }
+  });
 });
 
 httpServer.listen(port, () => {

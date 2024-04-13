@@ -2,8 +2,6 @@ import { ObjectId } from "mongodb";
 import chatSchema from "../schema/chatSchema.mjs";
 
 export default class ChatDAO {
-
-
   static async getChats({ filter = {}, page = 0, limit = 10 } = {}) {
     try {
       const cursor = await chatSchema
@@ -27,17 +25,23 @@ export default class ChatDAO {
     }
   }
 
-  static async addChat({
-    title,
-    host,
-    members,
-    activeMembers,
-    startTime,
-    appointmentId = null,
-  }) {
+  static async addChat({ title, host, members, activeMembers, startTime }) {
     try {
       if (host.username) {
         members.push(host.username);
+      }
+
+      const title1 = `${members[0]} and ${members[1]} chat`;
+      const title2 = `${members[1]} and ${members[0]} chat`;
+
+      const chatExists = await chatSchema.findOne({
+        title: {
+          $in: [title1, title2],
+        },
+      });
+      if (chatExists) {
+        console.log(`Chat already exists: ${chatExists}`);
+        return { success: true, result: chatExists };
       }
 
       const result = await chatSchema.create({
@@ -46,10 +50,9 @@ export default class ChatDAO {
         members: members,
         activeMembers: activeMembers ? activeMembers : [],
         startTime: new Date(startTime),
-        appointmentId: appointmentId ? new ObjectId(appointmentId) : null,
       });
 
-      return { success: true, id: result._id };
+      return { success: true, result };
     } catch (err) {
       console.error(`Failed to add new chat to DB. ${err}`);
       return { error: err };
